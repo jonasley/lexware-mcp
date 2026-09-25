@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Config } from "../config.js";
 import type { LexwareClient } from "../lexware/client.js";
 import type { TicketStore } from "../uploads/tickets.js";
@@ -41,10 +41,15 @@ interface TitledToolConfig {
  * Only `registerTool` is forwarded: that is the one method the register* functions call.
  */
 function withAnnotationTitles(server: McpServer): McpServer {
-  const registerTool = server.registerTool.bind(server) as (config: TitledToolConfig, ...rest: unknown[]) => unknown;
+  const registerTool = server.registerTool.bind(server) as (
+    name: string,
+    config: TitledToolConfig,
+    ...rest: unknown[]
+  ) => unknown;
   return {
-    registerTool: (config: TitledToolConfig, ...rest: unknown[]) =>
+    registerTool: (name: string, config: TitledToolConfig, ...rest: unknown[]) =>
       registerTool(
+        name,
         config.title ? { ...config, annotations: { ...config.annotations, title: config.title } } : config,
         ...rest,
       ),
@@ -54,15 +59,19 @@ function withAnnotationTitles(server: McpServer): McpServer {
 /**
  * Give every tool result a serialized copy of its `structuredContent` as text (see
  * {@link withJsonText}), by wrapping each handler once here instead of in ~40 of them.
+ *
+ * The rest parameters matter: the SDK calls a tool without `inputSchema` as `(ctx)` and
+ * one with a schema as `(args, ctx)`, and the wrapper must pass either through unchanged.
  */
 function withJsonTextResults(server: McpServer): McpServer {
   const registerTool = server.registerTool.bind(server) as (
+    name: string,
     config: unknown,
     handler: (...args: unknown[]) => unknown,
   ) => unknown;
   return {
-    registerTool: (config: unknown, handler: (...args: unknown[]) => unknown) =>
-      registerTool(config, async (...args: unknown[]) => withJsonText(await handler(...args))),
+    registerTool: (name: string, config: unknown, handler: (...args: unknown[]) => unknown) =>
+      registerTool(name, config, async (...args: unknown[]) => withJsonText(await handler(...args))),
   } as unknown as McpServer;
 }
 

@@ -73,9 +73,8 @@ export function pagedResult<T>(result: Paged<T>, noun: string) {
 }
 
 /**
- * MCP embedded-resource content block for a binary payload. Inlined (rather than
- * importing Skybridge's `embeddedResource`) so the tools layer stays independent
- * of the Skybridge runtime, per AGENTS.md.
+ * MCP embedded-resource content block for a binary payload. Inlined so the tools
+ * layer depends on SDK types only, per AGENTS.md.
  */
 function embeddedResourceBlock(uri: string, mimeType: string, data: Buffer) {
   return {

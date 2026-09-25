@@ -132,7 +132,7 @@ export function registerUploadRoutes(
     // body for a much larger buffered one (measured amplification: ~1000x) before
     // any limit or ticket check can stop it. `type: () => true` is intentional —
     // the endpoint accepts arbitrary declared content-types as opaque bytes; only
-    // the OUTER json-vs-raw ordering (server-body-parsing.ts) determines whether
+    // the OUTER json-vs-raw ordering (http-app.ts) determines whether
     // this middleware sees the real bytes or an already-parsed object.
     express.raw({ type: () => true, limit: maxBytes, inflate: false }),
     async (req, res) => {
@@ -146,7 +146,7 @@ export function registerUploadRoutes(
 
         const bytes = req.body;
         // Defense in depth, not just a length check: if the global JSON parser
-        // ever ran before this middleware again (see server-body-parsing.ts),
+        // ever ran before this middleware again (see http-app.ts),
         // `req.body` would be a parsed OBJECT, not a Buffer — `!bytes ||
         // bytes.length === 0` does not catch that (an object has no `.length`),
         // and the upload silently "succeeded" with zero bytes while still
@@ -226,12 +226,11 @@ export function registerUploadRoutes(
     const status =
       (err as { status?: number; statusCode?: number })?.status ?? (err as { statusCode?: number })?.statusCode;
     if (status === 413) {
-      // Deliberately does not name maxBytes: after the global JSON parser is
-      // deferred for /upload (server-body-parsing.ts), a 413 here always comes
-      // from THIS limit — but if that deferral ever fails (it's guarded, not
-      // guaranteed), the ~100 KB global parser could trip first instead, and a
-      // message naming the 20 MB limit would be actively wrong about what just
-      // happened.
+      // Deliberately does not name maxBytes: with no global JSON parser in the
+      // base app (http-app.ts), a 413 here always comes from THIS limit — but if
+      // one is ever added back (tests guard it, nothing guarantees it), its
+      // ~100 KB default could trip first instead, and a message naming the 20 MB
+      // limit would be actively wrong about what just happened.
       res.status(413).json({ error: "Uploaded file is too large." });
       return;
     }

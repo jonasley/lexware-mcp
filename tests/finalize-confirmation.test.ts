@@ -1,5 +1,4 @@
-import { CLIENT_CAPABILITIES_META_KEY, type ServerContext } from "@modelcontextprotocol/server";
-import type { McpServer } from "skybridge/server";
+import { CLIENT_CAPABILITIES_META_KEY, type McpServer, type ServerContext } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import type { LexwareClient } from "../src/lexware/client.js";
 import { registerDocumentFinalizeTools } from "../src/tools/documents.js";
@@ -117,8 +116,8 @@ describe("create-finalized-* with confirmation on", () => {
     const client = { post } as unknown as LexwareClient;
     let handler: ((args: Record<string, unknown>, extra: unknown) => Promise<unknown>) | undefined;
     const server = {
-      registerTool(cfg: { name: string }, h: typeof handler) {
-        if (cfg.name === TOOL) handler = h;
+      registerTool(name: string, _cfg: unknown, h: typeof handler) {
+        if (name === TOOL) handler = h;
         return server;
       },
     } as unknown as McpServer;

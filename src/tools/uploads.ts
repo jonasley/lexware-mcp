@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { TicketState, TicketStore } from "../uploads/tickets.js";
 import { LOCAL_RO, text, WRITE } from "./shared.js";
@@ -93,8 +93,8 @@ export function registerUploadTools(
   publicBaseUrl: string,
 ): void {
   server.registerTool(
+    "create-upload-ticket",
     {
-      name: "create-upload-ticket",
       title: "Create upload link",
       description:
         "Issue a short-lived, single-use upload ticket so a file can reach Lexware WITHOUT its bytes passing " +
@@ -106,7 +106,7 @@ export function registerUploadTools(
         "them and the file lands in the bookkeeping generically named 'upload.bin' as application/octet-stream. " +
         "The command needs no extra tools installed. It prints the Lexware file id; in the browser case, " +
         "read it afterwards with get-upload-result. Valid 15 minutes, usable once.",
-      inputSchema: {
+      inputSchema: z.object({
         filename: z
           .string()
           .optional()
@@ -122,7 +122,7 @@ export function registerUploadTools(
               "fallback if the upload carries none. Without it the receipt is filed as application/octet-stream.",
           ),
         type: z.string().default("voucher").describe('Lexware file category. "voucher" for bookkeeping receipts.'),
-      },
+      }),
       annotations: WRITE,
     },
     async ({ filename, mimeType, type }: { filename?: string; mimeType?: string; type: string }) => {
@@ -138,13 +138,13 @@ export function registerUploadTools(
   );
 
   server.registerTool(
+    "get-upload-result",
     {
-      name: "get-upload-result",
       title: "Get upload result",
       description:
         "Read the Lexware file id produced by an upload ticket. Use after a browser drag-and-drop; the curl " +
         "path already prints the id itself. Returns pending=true while nothing has been uploaded yet.",
-      inputSchema: { ticket: z.string().describe("The ticket from create-upload-ticket.") },
+      inputSchema: z.object({ ticket: z.string().describe("The ticket from create-upload-ticket.") }),
       // LOCAL_RO, not WRITE: the handler only reads the in-memory store (peek), and
       // this tool is DESIGNED to be polled after a browser upload — a WRITE hint made
       // approval-prompting clients confirm every poll iteration, and a client

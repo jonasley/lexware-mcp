@@ -2,8 +2,10 @@
  * Configuration for the Lexware MCP server.
  *
  * Parsed and validated once at startup from environment variables. Kept free of
- * any Skybridge/Express imports so it can be unit-tested in isolation.
+ * any Express/MCP SDK imports so it can be unit-tested in isolation.
  */
+
+import { isIP } from "node:net";
 
 // The allow-list default lives with the fetcher that enforces it, so the documented
 // default and the applied default cannot drift apart.
@@ -138,6 +140,11 @@ export interface Config {
    */
   uploadAllowedHosts: string[];
   port: number;
+  /**
+   * Interface the HTTP server binds (`HOST`). Loopback by default, so a local run is not
+   * reachable from the network; containers set `0.0.0.0` so the platform can route in.
+   */
+  host: string;
   debugLogging: boolean;
   capabilities: Capabilities;
   finalizeElicitation: FinalizeElicitation;
@@ -155,6 +162,7 @@ export interface Config {
 const DEFAULT_BASE_URL = "https://api.lexware.io";
 const DEFAULT_APP_BASE_URL = "https://app.lexware.de";
 const DEFAULT_PORT = 8080;
+const DEFAULT_HOST = "127.0.0.1";
 
 /** Parse a boolean env value. Accepts true/1/yes/on (case-insensitive). */
 function parseBool(raw: string | undefined, fallback: boolean): boolean {
@@ -172,6 +180,26 @@ function parsePort(raw: string | undefined): number {
     throw new ConfigError(`Invalid PORT "${raw}" (expected an integer 1-65535).`);
   }
   return n;
+}
+
+/**
+ * Parse `HOST`: an IP literal or `localhost`. Hostnames other than `localhost` are refused
+ * on purpose; a name that resolves to a public interface is exactly the surprise the
+ * loopback default exists to prevent.
+ */
+function parseHost(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HOST;
+  const v = raw.trim();
+  if (v.toLowerCase() === "localhost") return "localhost";
+  if (isIP(v) === 0) {
+    throw new ConfigError(`Invalid HOST "${raw}" (expected an IP address such as 127.0.0.1 or 0.0.0.0, or localhost).`);
+  }
+  return v;
+}
+
+/** True when `host` binds only the loopback interface (127.0.0.0/8, ::1, localhost). */
+export function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "::1" || (isIP(host) === 4 && host.startsWith("127."));
 }
 
 /**
@@ -251,21 +279,16 @@ function withoutMcpPath(url: string): string {
  * or a plain-http public URL fails at startup rather than being pasted into a curl
  * command an operator then runs.
  */
-function resolvePublicBaseUrl(env: NodeJS.ProcessEnv, port: number): string {
+function resolvePublicBaseUrl(env: NodeJS.ProcessEnv, port: number, host: string): string {
   const resource = env.OAUTH_RESOURCE?.trim();
   if (resource) return withoutMcpPath(normalizeUrl(resource, resource, "OAUTH_RESOURCE"));
   const serverUrl = env.SERVER_URL?.trim();
   if (serverUrl) return withoutMcpPath(normalizeUrl(serverUrl, serverUrl, "SERVER_URL"));
-  // The loopback fallback must name the port the server actually LISTENS on.
-  // Under `skybridge dev` that is `__PORT` — skybridge picks it itself (~3000)
-  // and plain PORT is never consulted; using `port` (default 8080) there handed
-  // out links refusing connections on the very machine the fallback exists for.
-  // `npm start` is unaffected: server.ts copies config.port into __PORT only
-  // AFTER config is loaded, so __PORT is present here only when something else
-  // (skybridge dev, or an operator) chose the bound port explicitly.
-  const bound = env.__PORT?.trim();
-  const boundPort = bound && /^\d+$/.test(bound) ? Number(bound) : NaN;
-  return `http://127.0.0.1:${boundPort >= 1 && boundPort <= 65535 ? boundPort : port}`;
+  // The loopback fallback must name the interface and port the server actually listens
+  // on, or the links refuse connections on the very machine the fallback exists for. A
+  // wildcard bind (0.0.0.0, ::) is reachable on 127.0.0.1 too.
+  const local = isLoopbackHost(host) ? (host.includes(":") ? `[${host}]` : host) : "127.0.0.1";
+  return `http://${local}:${port}`;
 }
 
 /**
@@ -418,6 +441,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const auth = resolveAuth(env);
   const port = parsePort(env.PORT);
+  const host = parseHost(env.HOST);
 
   const readOnly = parseBool(env.LEXWARE_READ_ONLY, false);
   // READ_ONLY is a hard override: it wins over the individual enable flags.
@@ -481,6 +505,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         "then remove OAUTH_VERIFY_AUDIENCE.",
     );
   }
+  if (!isLoopbackHost(host)) {
+    warnings.push(
+      `HOST=${host} binds a non-loopback interface, so the server is reachable from other machines. ` +
+        "That is intended in a container (Docker, Cloud Run); for a local run, keep the default 127.0.0.1.",
+    );
+  }
   // Outside OAuth mode, OAUTH_RESOURCE has exactly one remaining effect — it wins
   // over SERVER_URL as the base for upload links (resolvePublicBaseUrl). That is
   // easy to hit by accident: migrate from OAuth to a static token, remove
@@ -504,9 +534,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       "LEXWARE_APP_BASE_URL",
     ),
     auth,
-    publicBaseUrl: resolvePublicBaseUrl(env, port),
+    publicBaseUrl: resolvePublicBaseUrl(env, port, host),
     uploadAllowedHosts,
     port,
+    host,
     debugLogging: parseBool(env.LEXWARE_DEBUG_LOGGING, false),
     capabilities: { read: true, drafts: enableDrafts, finalize: enableFinalize, urlUpload: enableUrlUpload },
     finalizeElicitation,

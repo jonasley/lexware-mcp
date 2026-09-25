@@ -2,10 +2,13 @@ services:
   lexware-mcp:
     build: .
     image: lexware-mcp
+    # Published on the host's loopback only. Put a reverse proxy in front for remote access.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       PORT: "8080"
+      # Inside the container the server must bind every interface to be reachable.
+      HOST: "0.0.0.0"
     # Put LEXWARE_API_KEY and MCP_AUTH_TOKEN (and any capability flags) in a
     # local .env file (see .env.example). Never commit real secrets.
     env_file:

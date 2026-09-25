@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import { encodeSearchFilter } from "../lexware/search.js";
@@ -19,12 +19,12 @@ import { DESTRUCTIVE, RO, WRITE, deepMergePatch, mergeAddresses, pagedResult, te
 /** Read tools for contacts. Always registered. */
 export function registerContactReadTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "list-contacts",
     {
-      name: "list-contacts",
       title: "List contacts",
       description:
         "List/search contacts (customers and vendors). Optional filters; results are paged (use page/size).",
-      inputSchema: {
+      inputSchema: z.object({
         email: z
           .string()
           .min(3)
@@ -46,7 +46,7 @@ export function registerContactReadTools(server: McpServer, client: LexwareClien
         vendor: jsonBool(z.boolean().optional()),
         page: pageParam,
         size: sizeParam,
-      },
+      }),
       annotations: RO,
     },
     async ({ email, name, number, customer, vendor, page, size }) => {
@@ -68,11 +68,11 @@ export function registerContactReadTools(server: McpServer, client: LexwareClien
   );
 
   server.registerTool(
+    "get-contact",
     {
-      name: "get-contact",
       title: "Get contact",
       description: "Get a single contact by id.",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: RO,
     },
     async ({ id }) => {
@@ -85,12 +85,12 @@ export function registerContactReadTools(server: McpServer, client: LexwareClien
 /** Write tools: create/update a contact. Registered only when the drafts tier is enabled. */
 export function registerContactDraftTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "create-contact",
     {
-      name: "create-contact",
       title: "Create contact",
       description:
         "Create a new contact (customer and/or vendor). Provide roles plus either a person (lastName required) or a company (name required).",
-      inputSchema: { ...contactInputShape, additionalFields: additionalFieldsParam },
+      inputSchema: z.object({ ...contactInputShape, additionalFields: additionalFieldsParam }),
       annotations: WRITE,
     },
     async ({ additionalFields, ...input }) => {
@@ -107,8 +107,8 @@ export function registerContactDraftTools(server: McpServer, client: LexwareClie
   );
 
   server.registerTool(
+    "update-contact",
     {
-      name: "update-contact",
       title: "Update contact",
       description:
         "Update a contact. Read-modify-write: the current contact is fetched and your fields are merged over it, " +
@@ -117,11 +117,11 @@ export function registerContactDraftTools(server: McpServer, client: LexwareClie
         "resending the name), or a single address field like addresses.billing[0].countryCode — partial addresses " +
         "are merged into the existing one (street/zip/city are kept). Pass `version` for optimistic locking; omit " +
         "to use the latest.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string(),
         version: versionParam("get-contact"),
         ...contactUpdateShape,
-      },
+      }),
       annotations: DESTRUCTIVE,
     },
     async ({ id, version, ...fields }) => {

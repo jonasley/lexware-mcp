@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Dockerfile for a Skybridge MCP server.
+# Dockerfile for the Lexware Office MCP server.
 #
 # Detects npm, yarn, or pnpm from the lockfile in your project.
 # (For bun or deno, adapt the install/build/prune commands below.)
@@ -39,6 +39,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Default listen port. Cloud Run overrides PORT at runtime; the server reads it.
 ENV PORT=8080
+# Bind every interface inside the container, or the platform cannot route in. The server
+# defaults to 127.0.0.1 outside a container; publish the port deliberately (see
+# docker-compose.yml, which maps it to the host's loopback only).
+ENV HOST=0.0.0.0
 
 USER node
 
@@ -51,7 +55,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# Run the built server directly rather than via `npm start` / `skybridge start`.
-# Each wrapper adds a process layer that can swallow SIGTERM, which makes
+# Run the built server directly rather than via `npm start`.
+# A wrapper adds a process layer that can swallow SIGTERM, which makes
 # graceful shutdowns time out on platforms like Cloud Run, Fly, and k8s.
 CMD ["node", "dist/server.js"]

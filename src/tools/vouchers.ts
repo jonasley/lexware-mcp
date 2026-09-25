@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import { additionalFieldsParam, mergeBody, versionParam, voucherInputShape, voucherUpdateShape } from "./schemas.js";
@@ -14,13 +14,13 @@ const DERIVED_VOUCHER_STATUSES = new Set(["paid", "paidoff", "voided", "transfer
  */
 export function registerVoucherWriteTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "create-voucher",
     {
-      name: "create-voucher",
       title: "Create voucher",
       description:
         "Create a bookkeeping voucher (a manually-booked sales/purchase transaction). Returns the new id. " +
         "To attach a receipt afterwards, use upload-voucher-file.",
-      inputSchema: { ...voucherInputShape, additionalFields: additionalFieldsParam },
+      inputSchema: z.object({ ...voucherInputShape, additionalFields: additionalFieldsParam }),
       annotations: WRITE,
     },
     async ({ additionalFields, ...input }) => {
@@ -37,8 +37,8 @@ export function registerVoucherWriteTools(server: McpServer, client: LexwareClie
   );
 
   server.registerTool(
+    "update-voucher",
     {
-      name: "update-voucher",
       title: "Update voucher",
       description:
         "Update a bookkeeping voucher. Read-modify-write: the current voucher is fetched and your fields are " +
@@ -51,11 +51,11 @@ export function registerVoucherWriteTools(server: McpServer, client: LexwareClie
         "vouchers in an already-filed VAT period are festgeschrieben and cannot be modified or deleted via API " +
         "(web-app Storno only); there is no DELETE endpoint for vouchers. Pass `version` for optimistic locking " +
         "(omit for latest).",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string(),
         version: versionParam("get-voucher"),
         ...voucherUpdateShape,
-      },
+      }),
       annotations: DESTRUCTIVE,
     },
     async ({ id, version, ...fields }) => {
@@ -97,19 +97,19 @@ export function registerVoucherWriteTools(server: McpServer, client: LexwareClie
   );
 
   server.registerTool(
+    "upload-voucher-file",
     {
-      name: "upload-voucher-file",
       title: "Attach file to voucher",
       description:
         "Attach a file (receipt/scan) to a bookkeeping voucher via POST /v1/vouchers/{id}/files. Provide the " +
         "file as base64 (inline; ~12 MB body cap, so keep the source under ~8 MB). To RE-LINK an already-uploaded " +
         "file by id without re-sending bytes, set the voucher's `files` array via update-voucher instead.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string().describe("The voucher id to attach the file to."),
         fileBase64: z.string().describe("File contents, base64-encoded."),
         filename: z.string().describe('e.g. "receipt.pdf".'),
         mimeType: z.string().describe('Content type, e.g. "application/pdf" or "image/png".'),
-      },
+      }),
       annotations: WRITE,
     },
     async ({ id, fileBase64, filename, mimeType }) => {

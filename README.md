@@ -10,8 +10,8 @@ connect it to Claude, and let an agent read your invoices, vouchers, contacts an
 and (optionally) draft new ones.
 
 Bring your own Lexware API key — the server is single-tenant per deployment and never stores
-anyone else's credentials. It runs as a remote HTTP server on any container host, built with
-the [Skybridge](https://docs.skybridge.tech) framework.
+anyone else's credentials. It runs as a remote HTTP server on any container host, built on
+the official [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 
 **Two authentication methods — choose one:**
 - **OAuth 2.1** — the way to use this as a **web MCP server / custom connector** in the
@@ -163,7 +163,7 @@ asks for a token, and expects this server's protected-resource metadata to name 
 ```bash
 git clone https://github.com/marselsel/Lexware-MCP-Server && cd Lexware-MCP-Server
 cp .env.example .env          # set LEXWARE_API_KEY and MCP_AUTH_TOKEN
-docker compose up --build     # serves on http://localhost:8080/mcp
+docker compose up --build     # serves on http://127.0.0.1:8080/mcp
 ```
 
 Generate a strong auth token:
@@ -205,6 +205,7 @@ LEXWARE_API_KEY=... MCP_AUTH_TOKEN=... npm start
 | `LEXWARE_API_BASE_URL` | `https://api.lexware.io` | API base URL |
 | `LEXWARE_APP_BASE_URL` | `https://app.lexware.de` | Web-app base for document deeplinks |
 | `PORT` | `8080` | Listen port (your platform may inject this) |
+| `HOST` | `127.0.0.1` | Interface to bind: an IP address or `localhost`. Containers need `0.0.0.0`; the Dockerfile and `docker-compose.yml` set it. A non-loopback value is logged as a warning at startup |
 | `LEXWARE_DEBUG_LOGGING` | `false` | Verbose logs (never secrets/bodies) |
 
 ¹ The server needs **either** `OAUTH_ISSUER` (OAuth) **or** `MCP_AUTH_TOKEN` (static). It
@@ -233,8 +234,11 @@ that can serve HTTPS (a VPS, Fly.io, Render, Railway, Cloud Run, Kubernetes, …
 
 ```bash
 docker build -t lexware-mcp .
-docker run -p 8080:8080 --env-file .env lexware-mcp
+docker run -p 127.0.0.1:8080:8080 --env-file .env -e HOST=0.0.0.0 lexware-mcp
 ```
+
+`-e HOST=0.0.0.0` comes after `--env-file`, so it wins over a `HOST=127.0.0.1` in your local
+`.env`; inside the container the server must bind every interface to be reachable.
 
 Production notes:
 - Serve over **HTTPS** (terminate TLS at your platform or a reverse proxy).
@@ -257,12 +261,13 @@ domain) is in [docs/cloud-run.md](docs/cloud-run.md).
 - `src/tools/` — tools registered conditionally by tier.
 - `src/uploads/` — the single-use ticket store and the raw-body `/upload/:ticket` routes
   (mounted only with the drafts tier; the ticket is the credential).
-- `src/server.ts` — wires it together on the Skybridge Express server.
+- `src/server.ts` — wires it together: an Express app (`src/http-app.ts`) serving the SDK's
+  per-request MCP handler on `/mcp`, bound to `HOST` (default `127.0.0.1`).
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). `npm run dev` starts the Skybridge dev server +
-DevTools at `http://localhost:3000`.
+See [CONTRIBUTING.md](CONTRIBUTING.md). `npm run dev` starts the server with reload on
+change at `http://127.0.0.1:8080/mcp`.
 
 ## License
 

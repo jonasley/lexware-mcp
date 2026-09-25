@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { LexwareClient } from "../src/lexware/client.js";
@@ -19,9 +19,9 @@ function register(getBinary: LexwareClient["getBinary"]) {
   const handlers: Record<string, Handler> = {};
   const schemas: Record<string, z.ZodRawShape> = {};
   const server = {
-    registerTool(cfg: { name: string; inputSchema?: z.ZodRawShape }, handler: Handler) {
-      handlers[cfg.name] = handler;
-      if (cfg.inputSchema) schemas[cfg.name] = cfg.inputSchema;
+    registerTool(name: string, cfg: { inputSchema?: z.ZodObject<z.ZodRawShape> }, handler: Handler) {
+      handlers[name] = handler;
+      if (cfg.inputSchema) schemas[name] = cfg.inputSchema.shape;
       return server;
     },
   } as unknown as McpServer;

@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { LexwareClient } from "../src/lexware/client.js";
@@ -23,8 +23,8 @@ function handlersFor(
 ): Record<string, Handler> {
   const handlers: Record<string, Handler> = {};
   const server = {
-    registerTool(cfg: { name: string }, handler: Handler) {
-      handlers[cfg.name] = handler;
+    registerTool(name: string, _cfg: unknown, handler: Handler) {
+      handlers[name] = handler;
       return server;
     },
   } as unknown as McpServer;

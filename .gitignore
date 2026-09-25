@@ -10,7 +10,6 @@ dist/
 *.p12
 .DS_store
 *.tsbuildinfo
-.skybridge/
 .agents/
 # npm auth tokens:
 .npmrc

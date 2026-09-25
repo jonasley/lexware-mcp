@@ -1,22 +1,15 @@
 import type { Request, RequestHandler } from "express";
-import {
-  type AuthInfo,
-  type AuthMetadataOptions,
-  OAuthError,
-  OAuthErrorCode,
-  requireBearerAuth,
-} from "skybridge/server";
+import { type AuthMetadataOptions, requireBearerAuth } from "@modelcontextprotocol/express";
+import { type AuthInfo, OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
 import { createHash } from "node:crypto";
 import * as jose from "jose";
 
 /**
- * Authorization-server metadata, taken from the router that serves it rather than imported
- * on its own — skybridge re-exports the option bag but not this type.
+ * Authorization-server metadata, taken from the option bag of the router that serves it
+ * (`mcpAuthMetadataRouter` in `@modelcontextprotocol/express`), so the two cannot drift.
  *
- * Deliberately NOT `@modelcontextprotocol/sdk`'s copy of it. skybridge 2 still depends on
- * the 1.x SDK, so that import resolves and typechecks while `server.ts` mounts the v2
- * router from `@modelcontextprotocol/express`. Two structurally similar types from two
- * implementations, only one of which ships. Deriving from the option bag can't drift.
+ * Deliberately NOT the legacy 1.x `@modelcontextprotocol/sdk` copy of it: a structurally
+ * similar type from an implementation this server does not run.
  */
 type OAuthMetadata = AuthMetadataOptions["oauthMetadata"];
 

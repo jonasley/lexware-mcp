@@ -1,5 +1,4 @@
-import type { ServerContext } from "@modelcontextprotocol/server";
-import type { McpServer, StandardSchemaWithJSON } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import { LexwareApiError } from "../lexware/errors.js";
@@ -25,14 +24,8 @@ import {
 import type { FinalizeConfirmation } from "./finalize-confirmation.js";
 import { DESTRUCTIVE, LOCAL_RO, RO, WRITE, binaryResult, pagedResult, text } from "./shared.js";
 
-/**
- * A tool's `inputSchema`: the raw field shape skybridge's `registerTool` takes.
- *
- * Named locally rather than imported from the 1.x SDK's `ZodRawShapeCompat`. skybridge 2
- * still depends on that SDK, so the import resolves and tsc stays quiet while the running
- * code is the v2 surface — see the same trap in oauth.ts.
- */
-type ToolInputShape = Record<string, StandardSchemaWithJSON>;
+/** A create-body field shape; tools wrap it in `z.object()` for their `inputSchema`. */
+type ToolInputShape = Record<string, z.ZodType>;
 
 /** A Lexware voucher-document type and how to create it. */
 interface DocType {
@@ -341,12 +334,12 @@ export function registerDocumentReadTools(
   appBaseUrl: string,
 ): void {
   server.registerTool(
+    "get-voucherlist",
     {
-      name: "get-voucherlist",
       title: "List vouchers",
       description:
         "Search the voucher list — the primary index of all financial documents (invoices, credit notes, quotations, etc.). voucherType and voucherStatus both default to 'any', which matches all. Results are paged. Filter by createdDate*/updatedDate* to see only what is new or changed since a given day, and by voucherNumber to look a single document up by its number.",
-      inputSchema: {
+      inputSchema: z.object({
         voucherType: voucherFilterParam(VOUCHER_TYPES)
           .describe("One type, or several as an array/comma-separated list. 'any' must stand alone."),
         voucherStatus: voucherFilterParam(VOUCHER_STATUSES)
@@ -376,7 +369,7 @@ export function registerDocumentReadTools(
         archived: jsonBool(z.boolean().optional()),
         page: pageParam,
         size: sizeParam,
-      },
+      }),
       annotations: RO,
     },
     async ({
@@ -429,8 +422,8 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "summarize-vouchers",
     {
-      name: "summarize-vouchers",
       title: "Summarize voucher totals",
       description:
         "Aggregate the voucherlist over a date range WITHOUT returning every row: server-side paginates all " +
@@ -439,7 +432,7 @@ export function registerDocumentReadTools(
         "limit on large ranges. Amounts are GROSS (the voucherlist's totalAmount/openAmount) in the document " +
         "currency — the net/VAT split is not in the voucherlist, so this does not break out USt. " +
         "voucherType/voucherStatus default to 'any'.",
-      inputSchema: {
+      inputSchema: z.object({
         voucherType: voucherFilterParam(VOUCHER_TYPES)
           .describe("One type, or several as an array/comma-separated list. 'any' must stand alone."),
         voucherStatus: voucherFilterParam(VOUCHER_STATUSES)
@@ -456,7 +449,7 @@ export function registerDocumentReadTools(
         maxPages: jsonNum(z.number().int().min(1).max(200).default(40)).describe(
           "Safety cap on pages scanned (250 rows/page). If hit, the result is flagged truncated.",
         ),
-      },
+      }),
       annotations: RO,
     },
     async ({
@@ -581,12 +574,12 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-voucher",
     {
-      name: "get-voucher",
       title: "Get voucher",
       description:
         "Get a single bookkeeping voucher by id — the full object, including contactId for referenced contacts (collective vouchers have only contactName) and files[] (ids of attached receipts). Note: only manually-booked vouchers resolve here; for any other voucherlist row (invoice, quotation, …) use get-document. There is no festgeschrieben/lock flag in the payload; a locked (filed-VAT-period) voucher only surfaces as an error on a write attempt.",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: RO,
     },
     async ({ id }) => {
@@ -596,17 +589,17 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-vouchers",
     {
-      name: "get-vouchers",
       title: "Get several vouchers",
       description:
         "Fetch multiple bookkeeping vouchers by id in one call (each returned in full, like get-voucher) — " +
         "reduces round-trips when you need many. Fetched sequentially through the ~2 requests/second rate limit, " +
         "so a full batch of 50 takes ~25s; page through larger sets. Ids that fail are returned in `errors` " +
         "(not thrown), so one bad id won't fail the batch.",
-      inputSchema: {
+      inputSchema: z.object({
         ids: jsonObj(z.array(z.string()).min(1).max(50)).describe("Voucher ids to fetch (max 50 per call)."),
-      },
+      }),
       annotations: RO,
     },
     async ({ ids }) => {
@@ -630,8 +623,8 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-document",
     {
-      name: "get-document",
       title: "Get document by voucher type",
       description:
         "Fetch any financial document by id — invoice, quotation, credit note, order confirmation, delivery " +
@@ -639,12 +632,12 @@ export function registerDocumentReadTools(
         "right endpoint from its `voucherType`. Pass the voucherType exactly as get-voucherlist returns it " +
         "(e.g. 'invoice', 'purchaseinvoice', 'quotation'); for a dunning, which the voucherlist does not " +
         "list, use 'dunning'.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string(),
         voucherType: z
           .enum(Object.keys(VOUCHERTYPE_TO_PATH) as [string, ...string[]])
           .describe("The voucherlist voucherType for this id."),
-      },
+      }),
       annotations: RO,
     },
     async ({ id, voucherType }) => {
@@ -664,19 +657,19 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-document-file",
     {
-      name: "get-document-file",
       title: "Download document file",
       description:
         "Download the finalized file of a sales document by resource + id (GET /v1/{resourceType}/{id}/file), " +
         "returned inline — the PDF by default, or the e-invoice XML with format=\"xml\", which exists only for " +
         "an XRechnung invoice, credit note or down payment invoice. The document must be FINALIZED — a draft " +
         "has no file yet. resourceType is the REST path, e.g. 'invoices', 'credit-notes'.",
-      inputSchema: {
+      inputSchema: z.object({
         resourceType: z.enum(DOC_FILE_PATHS).describe("Document resource path, e.g. 'invoices', 'credit-notes'."),
         id: z.string(),
         format: documentFormatParam,
-      },
+      }),
       annotations: RO,
     },
     async ({ resourceType, id, format }) => {
@@ -699,17 +692,17 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-voucher-file",
     {
-      name: "get-voucher-file",
       title: "Download voucher receipt",
       description:
         "Download the receipt attached to a bookkeeping voucher in one call: resolves the voucher's file id " +
         "and returns the file inline (instead of get-voucher then download-file). Use fileIndex to pick a " +
         "different attachment when a voucher has several.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string().describe("The voucher id."),
         fileIndex: jsonNum(z.number().int().min(0).default(0)).describe("Which attached file (0 = first)."),
-      },
+      }),
       annotations: RO,
     },
     async ({ id, fileIndex }) => {
@@ -737,16 +730,16 @@ export function registerDocumentReadTools(
   );
 
   server.registerTool(
+    "get-document-link",
     {
-      name: "get-document-link",
       title: "Build Lexware web-app link",
       description:
         "Build a deeplink that opens a document directly in the Lexware web app (works when logged into Lexware). Use this to let the user view/print a document; do not use it to fetch raw PDF bytes.",
-      inputSchema: {
+      inputSchema: z.object({
         resourceType: z.enum(DEEPLINK_RESOURCES),
         id: z.string(),
         action: z.enum(["view", "edit"]).default("view"),
-      },
+      }),
       annotations: LOCAL_RO,
     },
     async ({ resourceType, id, action }) => {
@@ -757,17 +750,13 @@ export function registerDocumentReadTools(
   );
 }
 
-/**
- * Make every field of a create shape optional, for the read-modify-write update
- * tools. The raw-shape values are real zod schemas at runtime, so `.optional()`
- * works; the cast bridges the SDK's compat type.
- */
+/** Make every field of a create shape optional, for the read-modify-write update tools. */
 function optionalShape(shape: ToolInputShape): ToolInputShape {
-  const out: Record<string, unknown> = {};
+  const out: ToolInputShape = {};
   for (const [key, value] of Object.entries(shape)) {
-    out[key] = (value as z.ZodTypeAny).optional();
+    out[key] = value.optional();
   }
-  return out as ToolInputShape;
+  return out;
 }
 
 /** Draft-creation tools for every writable document type. Registered with the drafts tier. */
@@ -775,15 +764,15 @@ export function registerDocumentDraftTools(server: McpServer, client: LexwareCli
   for (const doc of DOC_TYPES) {
     if (!doc.schema) continue;
     server.registerTool(
+      `create-draft-${doc.key}`,
       {
-        name: `create-draft-${doc.key}`,
         title: `Create draft ${doc.label}`,
         description:
           `Create a DRAFT ${doc.label} (editable, not legally issued). Provide the full document body for a ` +
           `standalone document; with precedingSalesVoucherId the body (line items/contact) is carried over ` +
           `from that preceding voucher — dunnings can ONLY be created this way (pursue from an invoice). ` +
           `To ISSUE a legally-binding document, use create-finalized-${doc.key} instead (finalize tier).`,
-        inputSchema: {
+        inputSchema: z.object({
           ...optionalShape(doc.schema),
           precedingSalesVoucherId: z
             .string()
@@ -802,7 +791,7 @@ export function registerDocumentDraftTools(server: McpServer, client: LexwareCli
             `MOVED — see create-finalized-${doc.key}.`,
           ),
           additionalFields: additionalFieldsParam,
-        },
+        }),
         annotations: WRITE,
       },
       async ({ precedingSalesVoucherId, additionalFields, finalize, confirm_finalize, ...input }) => {
@@ -863,11 +852,11 @@ export function registerDocumentFinalizeTools(
   for (const doc of DOC_TYPES) {
     if (!doc.schema || !doc.finalize) continue;
     server.registerTool(
+      `create-finalized-${doc.key}`,
       {
-        name: `create-finalized-${doc.key}`,
         title: `Issue ${doc.label} (finalize, irreversible)`,
         description: `Create and FINALIZE a ${doc.label} in one step. This issues a LEGALLY BINDING, IRREVERSIBLE document (it cannot be edited or deleted afterwards). Requires confirm_finalize=true. Prefer create-draft-${doc.key} unless the user explicitly wants to issue it now.`,
-        inputSchema: {
+        inputSchema: z.object({
           ...optionalShape(doc.schema),
           precedingSalesVoucherId: z
             .string()
@@ -877,10 +866,10 @@ export function registerDocumentFinalizeTools(
             "Must be true to acknowledge this issues a legally binding document.",
           ),
           additionalFields: additionalFieldsParam,
-        },
+        }),
         annotations: DESTRUCTIVE,
       },
-      async (args, extra) => {
+      async (args, ctx) => {
         const { confirm_finalize: _confirm, precedingSalesVoucherId, additionalFields, ...input } = args;
         // The human's say, where the operator asked for it (LEXWARE_FINALIZE_ELICITATION):
         // a confirmation form, re-entered with the answer, before anything is issued.
@@ -888,7 +877,7 @@ export function registerDocumentFinalizeTools(
           const outcome = await confirmation.check(
             `create-finalized-${doc.key}`,
             args,
-            extra as unknown as ServerContext,
+            ctx,
             finalizePrompt(doc.label, input, precedingSalesVoucherId),
           );
           if (outcome) return outcome;

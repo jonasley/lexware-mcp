@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
 import { type Config, loadConfig } from "../src/config.js";
 import { buildServerInstructions } from "../src/instructions.js";
@@ -9,8 +9,8 @@ import { TicketStore } from "../src/uploads/tickets.js";
 function registeredNames(config: Config): string[] {
   const names: string[] = [];
   const fakeServer = {
-    registerTool(cfg: { name: string }) {
-      names.push(cfg.name);
+    registerTool(name: string) {
+      names.push(name);
       return fakeServer;
     },
   } as unknown as McpServer;

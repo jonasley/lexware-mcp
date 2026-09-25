@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import { fetchRemoteFile } from "../uploads/fetch-url.js";
@@ -79,8 +79,8 @@ export function registerUrlUploadTool(
   allowedHosts: string[],
 ): void {
   server.registerTool(
+    "upload-file-from-url",
     {
-      name: "upload-file-from-url",
       title: "Upload file from URL",
       description:
         "Download a file from a pre-authenticated share link and store it in Lexware, without the bytes " +
@@ -88,12 +88,12 @@ export function registerUrlUploadTool(
         "Microsoft 365 tools. Only https URLs on an allow-listed host are accepted, re-checked after every " +
         `redirect; arbitrary URLs are refused by design. Allow-listed here: ${allowedHosts.join(", ") || "(none — every URL is refused)"}. ` +
         "Limit 20 MB. If the file is on this machine rather than behind a link, use create-upload-ticket.",
-      inputSchema: {
+      inputSchema: z.object({
         url: z.string().describe("Public https URL of the file (allow-listed hosts only)."),
         filename: z.string().optional().describe("Overrides the name derived from the response."),
         mimeType: z.string().optional().describe("Overrides the content type from the response."),
         type: z.string().default("voucher").describe('Lexware file category. "voucher" for bookkeeping receipts.'),
-      },
+      }),
       annotations: WRITE,
     },
     async ({ url, filename, mimeType, type }: { url: string; filename?: string; mimeType?: string; type: string }) => {

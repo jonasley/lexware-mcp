@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Security
+- Removed the Skybridge framework; the server now runs directly on the official MCP SDK
+  (`@modelcontextprotocol/server`, `/express`, `/node`). Skybridge sent a UDP telemetry packet per
+  tool call to a hard-coded address and bound the HTTP server on every interface.
+- The server binds `HOST`, default `127.0.0.1`, and guards a localhost bind against DNS rebinding
+  (Host and Origin checks from the SDK). Containers set `HOST=0.0.0.0`; `docker-compose.yml` now
+  publishes the port on the host's loopback only. A non-loopback bind is logged as a warning.
+- Removed the `dev:tunnel` script and the Skybridge DevTools; `npm run dev` is `tsx watch`.
 - `npm start` now sets `NODE_ENV=production`. Without it Skybridge also mounted its devtools and a
   Vite dev server — unauthenticated, CORS-open, on every interface — so the README's "Without
   Docker" path ran a dev server in production. `/mcp` stayed gated; the Docker image was never

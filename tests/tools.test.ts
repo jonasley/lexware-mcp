@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
 import { type Config, loadConfig } from "../src/config.js";
 import type { LexwareClient } from "../src/lexware/client.js";
@@ -70,8 +70,8 @@ const FINALIZE_TOOLS = [
 function registeredNames(config: Config): string[] {
   const names: string[] = [];
   const fakeServer = {
-    registerTool(cfg: { name: string }) {
-      names.push(cfg.name);
+    registerTool(name: string) {
+      names.push(name);
       return fakeServer;
     },
   } as unknown as McpServer;
@@ -90,8 +90,8 @@ interface ToolDef {
 function registeredDefs(config: Config): ToolDef[] {
   const defs: ToolDef[] = [];
   const fakeServer = {
-    registerTool(cfg: ToolDef) {
-      defs.push(cfg);
+    registerTool(name: string, cfg: Omit<ToolDef, "name">) {
+      defs.push({ name, ...cfg });
       return fakeServer;
     },
   } as unknown as McpServer;
@@ -208,8 +208,8 @@ describe("tool results carry the structured data as text", () => {
     // that shows the model only `content` must still see the document, not just a summary.
     const handlers: Record<string, (args: unknown) => Promise<{ content: { type: string; text?: string }[]; structuredContent: unknown }>> = {};
     const fakeServer = {
-      registerTool(cfg: { name: string }, handler: (typeof handlers)[string]) {
-        handlers[cfg.name] = handler;
+      registerTool(name: string, _cfg: unknown, handler: (typeof handlers)[string]) {
+        handlers[name] = handler;
         return fakeServer;
       },
     } as unknown as McpServer;

@@ -6,8 +6,7 @@
   "description": "Open-source, self-hostable MCP server for the Lexware Office API",
   "type": "module",
   "scripts": {
-    "dev": "skybridge dev",
-    "dev:tunnel": "skybridge dev --tunnel",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc -b --force",
     "start": "NODE_ENV=production node dist/server.js",
     "typecheck": "tsc -b --force",
@@ -15,13 +14,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
+    "express": "^5.2.1",
+    "hono": "^4.13.8",
     "jose": "^6.2.12",
-    "skybridge": "^2.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@skybridge/devtools": "^2.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.1",
     "tsx": "^4.23.13",

@@ -2,7 +2,8 @@ import express from "express";
 import * as jose from "jose";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mcpAuthMetadataRouter, OAuthError, OAuthErrorCode } from "skybridge/server";
+import { mcpAuthMetadataRouter } from "@modelcontextprotocol/express";
+import { OAuthError, OAuthErrorCode } from "@modelcontextprotocol/server";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   advertisedScopes,
@@ -133,7 +134,7 @@ const refusedFinal = { status: 403, challenge: null, body: { error: "access_deni
 
 describe("the rejection is an OAuthError, which is what decides the HTTP status", () => {
   // Every other rejection test here asserts only the MESSAGE, and the message is the one
-  // thing that does NOT matter to the wire. skybridge 2's requireBearerAuth (from
+  // thing that does NOT matter to the wire. requireBearerAuth (from
   // @modelcontextprotocol/express v2) classifies by `instanceof OAuthError`:
   //
   //   const body = error instanceof OAuthError ? error : new OAuthError(ServerError, ...)
@@ -142,7 +143,7 @@ describe("the rejection is an OAuthError, which is what decides the HTTP status"
   // never told to re-authenticate. This file previously threw InvalidTokenError /
   // InsufficientScopeError from the legacy 1.x SDK, which are NOT instances of it —
   // verified: `new InvalidTokenError("x") instanceof OAuthError === false`. tsc cannot
-  // catch that, because skybridge 2 still depends on the 1.x SDK so the import resolves.
+  // catch that when the 1.x SDK is installed anywhere in the tree, because the import resolves.
   it("throws invalid_token for a bad token, so the client gets a 401 + challenge", async () => {
     const verify = createAccessTokenVerifier(settings(), { jwks });
     const token = await sign({ sub: "u" }, { iss: "https://evil.example.com" });
@@ -347,10 +348,9 @@ describe("advertisedScopes", () => {
 /**
  * Serve the protected-resource metadata the way server.ts mounts it, and read it back.
  *
- * The router comes from `skybridge/server` for the same reason the OAuth error class does:
- * skybridge 2 still depends on the 1.x SDK, so importing `mcpAuthMetadataRouter` from
- * `@modelcontextprotocol/sdk` resolves and typechecks — and pins these RFC 9728 assertions
- * against an implementation the server does not run.
+ * The router comes from `@modelcontextprotocol/express`, the same v2 package server.ts
+ * mounts. Importing `mcpAuthMetadataRouter` from the legacy `@modelcontextprotocol/sdk`
+ * would pin these RFC 9728 assertions against an implementation the server does not run.
  */
 async function protectedResourceDoc(oauth: OAuthSettings): Promise<Record<string, unknown>> {
   const app = express();

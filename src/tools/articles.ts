@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import type { Paged } from "../lexware/types.js";
@@ -16,18 +16,18 @@ import { DESTRUCTIVE, RO, WRITE, deepMergePatch, deleteIdempotent, pagedResult, 
 /** Read tools for articles (products/services). Always registered. */
 export function registerArticleReadTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "list-articles",
     {
-      name: "list-articles",
       title: "List articles",
       description:
         "List articles (products/services). Optional filters; results are paged (use page/size to fetch more).",
-      inputSchema: {
+      inputSchema: z.object({
         articleNumber: z.string().optional(),
         gtin: z.string().optional(),
         type: z.enum(["PRODUCT", "SERVICE"]).optional(),
         page: pageParam,
         size: sizeParam,
-      },
+      }),
       annotations: RO,
     },
     async ({ articleNumber, gtin, type, page, size }) => {
@@ -43,11 +43,11 @@ export function registerArticleReadTools(server: McpServer, client: LexwareClien
   );
 
   server.registerTool(
+    "get-article",
     {
-      name: "get-article",
       title: "Get article",
       description: "Get a single article by id.",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: RO,
     },
     async ({ id }) => {
@@ -63,11 +63,11 @@ export function registerArticleReadTools(server: McpServer, client: LexwareClien
 /** Write tools for articles. Registered with the drafts tier. */
 export function registerArticleWriteTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "create-article",
     {
-      name: "create-article",
       title: "Create article",
       description: "Create a new article (product or service).",
-      inputSchema: { ...articleInputShape, additionalFields: additionalFieldsParam },
+      inputSchema: z.object({ ...articleInputShape, additionalFields: additionalFieldsParam }),
       annotations: WRITE,
     },
     async ({ additionalFields, ...input }) => {
@@ -77,18 +77,18 @@ export function registerArticleWriteTools(server: McpServer, client: LexwareClie
   );
 
   server.registerTool(
+    "update-article",
     {
-      name: "update-article",
       title: "Update article",
       description:
         "Update an existing article. Read-modify-write: the current article is fetched and your fields are " +
         "merged over it, so omitted fields aren't wiped and you can change just the price. Pass `version` for " +
         "optimistic locking (omit to use the latest); a stale version is rejected with 409.",
-      inputSchema: {
+      inputSchema: z.object({
         id: z.string(),
         version: versionParam("get-article"),
         ...articleUpdateShape,
-      },
+      }),
       annotations: DESTRUCTIVE,
     },
     async ({ id, version, ...fields }) => {
@@ -117,13 +117,13 @@ export function registerArticleWriteTools(server: McpServer, client: LexwareClie
  */
 export function registerArticleDeleteTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "delete-article",
     {
-      name: "delete-article",
       title: "Delete article",
       description:
         "Delete an article (product/service) by id. This is irreversible. Idempotent: deleting an id that is " +
         "already absent reports success (the end state is the same).",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: DESTRUCTIVE,
     },
     async ({ id }) => {

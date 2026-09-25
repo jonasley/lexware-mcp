@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { LexwareClient } from "../lexware/client.js";
 import { DESTRUCTIVE, RO, text, WRITE, deleteIdempotent } from "./shared.js";
@@ -6,8 +6,8 @@ import { DESTRUCTIVE, RO, text, WRITE, deleteIdempotent } from "./shared.js";
 /** Read tools for event subscriptions (webhooks). Always registered. */
 export function registerEventSubscriptionReadTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "list-event-subscriptions",
     {
-      name: "list-event-subscriptions",
       title: "List webhook subscriptions",
       description: "List webhook event subscriptions configured for this organization.",
       annotations: RO,
@@ -19,11 +19,11 @@ export function registerEventSubscriptionReadTools(server: McpServer, client: Le
   );
 
   server.registerTool(
+    "get-event-subscription",
     {
-      name: "get-event-subscription",
       title: "Get webhook subscription",
       description: "Get a single event subscription by id.",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: RO,
     },
     async ({ id }) => {
@@ -42,21 +42,21 @@ export function registerEventSubscriptionReadTools(server: McpServer, client: Le
  */
 export function registerEventSubscriptionWriteTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "create-event-subscription",
     {
-      name: "create-event-subscription",
       title: "Create webhook subscription",
       description:
         "Subscribe a callback URL to a Lexware event type (webhook), e.g. eventType 'invoice.created'. Sends future " +
         "event notifications to an EXTERNAL URL, so treat the target as trusted. The callback URL must be https:// " +
         "and serve a Grade-A HTTPS certificate.",
-      inputSchema: {
+      inputSchema: z.object({
         eventType: z.string().describe("e.g. 'invoice.created', 'invoice.status.changed'."),
         callbackUrl: z
           .string()
           .url()
           .refine((u) => u.startsWith("https://"), { message: "callbackUrl must be https://." })
           .describe("HTTPS endpoint that will receive events (Lexware requires a Grade-A HTTPS certificate)."),
-      },
+      }),
       annotations: WRITE,
     },
     async ({ eventType, callbackUrl }) => {
@@ -81,11 +81,11 @@ export function registerEventSubscriptionWriteTools(server: McpServer, client: L
  */
 export function registerEventSubscriptionDeleteTools(server: McpServer, client: LexwareClient): void {
   server.registerTool(
+    "delete-event-subscription",
     {
-      name: "delete-event-subscription",
       title: "Delete webhook subscription",
       description: "Delete (unsubscribe) an event subscription by id. Stops the webhook; recreate it to re-subscribe.",
-      inputSchema: { id: z.string() },
+      inputSchema: z.object({ id: z.string() }),
       annotations: DESTRUCTIVE,
     },
     async ({ id }) => {

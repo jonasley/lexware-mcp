@@ -1,13 +1,15 @@
-import express, { type Request, type Response } from "express";
-import { mcpAuthMetadataRouter, Skybridge } from "skybridge/server";
+import { mcpAuthMetadataRouter } from "@modelcontextprotocol/express";
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import { createMcpHandler, McpServer, UnsupportedProtocolVersionError } from "@modelcontextprotocol/server";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { bearerAuthMiddleware } from "./auth.js";
-import { ConfigError, describeCapabilities, loadConfig } from "./config.js";
+import { type Config, ConfigError, describeCapabilities, loadConfig } from "./config.js";
+import { createBaseApp } from "./http-app.js";
 import { buildServerInstructions } from "./instructions.js";
 import { LexwareClient } from "./lexware/client.js";
 import { advertisedScopes, buildOAuthMetadata, oauthGate, protectedResourceMetadataUrl } from "./oauth.js";
 import { createFinalizeConfirmation } from "./tools/finalize-confirmation.js";
 import { registerTools } from "./tools/index.js";
-import { INERT_APP_JSON } from "./server-body-parsing.js";
 import { registerUploadRoutes } from "./uploads/routes.js";
 import { TicketStore } from "./uploads/tickets.js";
 
@@ -15,7 +17,7 @@ import { TicketStore } from "./uploads/tickets.js";
 const JSON_BODY_LIMIT = "12mb";
 
 // Fail fast with a clear, secret-free message on any misconfiguration.
-let config;
+let config: Config;
 try {
   config = loadConfig();
 } catch (err) {
@@ -24,15 +26,6 @@ try {
     process.exit(1);
   }
   throw err;
-}
-
-// Skybridge's `run()` binds `process.env.__PORT` (default 3000). When running the
-// built server directly (`node dist/server.js`) there's no `skybridge start` to
-// bridge ports, so make our validated `config.port` (which reads `PORT`, default
-// 8080) authoritative. `skybridge dev` sets `__PORT` itself, so only set it when
-// it isn't already provided.
-if (!process.env.__PORT) {
-  process.env.__PORT = String(config.port);
 }
 
 const client = new LexwareClient({
@@ -45,7 +38,7 @@ const client = new LexwareClient({
 // the model context. Shared store so the MCP tools can issue and read tickets that the
 // upload routes consume.
 //
-// Module scope, NOT inside the handler: Skybridge runs `handler` on EVERY request. A
+// Module scope, NOT inside createServer: that runs on EVERY request. A
 // per-request store would mean a ticket issued by one request is unknown to the request
 // that redeems it, so every upload would fail. The same goes for `client` above — it
 // holds the token-bucket rate limiter, and one bucket per request is no limiter at all
@@ -57,84 +50,83 @@ export const uploadTickets = new TicketStore();
 // used, and its key must be the one that minted the state the client echoes back.
 const finalizeConfirmation = createFinalizeConfirmation(config.finalizeElicitation, config.requestStateKey);
 
-const app = new Skybridge({
-  name: "lexware-office",
-  title: "Lexware Office",
-  description: "Contacts, sales documents, vouchers and files in Lexware Office.",
-  websiteUrl: "https://github.com/marselsel/Lexware-MCP-Server",
-  version: "0.2.0",
-  capabilities: {},
-  // Sent when a client connects: how the tools fit together, scoped to the enabled tiers.
-  instructions: buildServerInstructions(config.capabilities),
-  // Verifies the signed requestState a client echoes back with its confirmation, before the
-  // handler runs. Without the hook the SDK would hand the handler the raw, unverified string.
-  ...(finalizeConfirmation ? { requestState: { verify: finalizeConfirmation.verify } } : {}),
-  // Skybridge's own app-level express.json() runs ahead of everything below, including
-  // the auth gate. Kept inert; this file mounts what it needs, where it needs it.
-  // See server-body-parsing.ts for why that ordering is load-bearing.
-  json: INERT_APP_JSON,
-  // Per request, and must be synchronous — so it does registration and nothing else.
-  //
-  // It costs ~23ms of blocking CPU per request (53 tools at the read+drafts tier), which
-  // is most of the server's own time. That tier has 39 tools since the per-type get-<type>
-  // and render-<type>-pdf tools were folded into get-document and get-document-file, so
-  // read the figures below as an upper bound. Measured over HTTP against the built image:
-  //
-  //   /status        2.1ms      <- no registration
-  //   initialize    29.5ms      <- pays for all 53 tool schemas and uses none of them
-  //   tools/list    41.3ms
-  //
-  // Do NOT take Skybridge's own boot warning ("The Skybridge handler took 68ms — it runs
-  // on every request") as the recurring figure. It prints once, from the cold first build
-  // during `ready()`, so it carries the JIT warm-up: steady state is ~2.5x cheaper than
-  // that line suggests. Cheaper, and still the dominant cost of a request.
-  //
-  // Where it goes, measured by running the real registerTools twice against a server whose
-  // registerTool drops `inputSchema` in one pass and keeps it in the other:
-  //
-  //   registration, as it runs today            22.9ms
-  //   the same, minus the SDK's zod -> JSON     4.7ms   <- all the rest is ours
-  //   Schema conversion
-  //
-  // So ~79% is `_createRegisteredTool` calling `standardSchemaToJsonSchema` on every
-  // registration, and that part cannot be hoisted away from here:
-  //
-  //   - zod does NOT memoize `~standard.jsonSchema.input()`. Converting ONE hoisted
-  //     instance 300 times costs a median 0.84ms every time and returns a fresh object on
-  //     each call; a per-registration `z.object(shape)` costs 1.03ms. Hoisting buys 18%,
-  //     not the ~100% a memo would.
-  //   - skybridge's `registerTool` constrains its input to `Record<string,
-  //     StandardSchemaWithJSON>` — a raw field shape. A pre-built schema carrying a cached
-  //     JSON Schema is a compile error ("Index signature for type 'string' is missing"),
-  //     and forcing it through types every handler argument `unknown`.
-  //   - the server genuinely has to be per-request, so `setup` cannot hold a warmed-up
-  //     one: skybridge builds a fresh instance deliberately, because sharing one would
-  //     pin concurrent callers to a single negotiated protocol version.
-  //
-  // The remaining 4.7ms is ours and is hoistable, at the price of lifting every
-  // `inputSchema` literal in src/tools/ to module scope. Not taken: a fifth of a cost
-  // whose other four fifths are upstream.
-  //
-  // Registration still fails at BOOT, not per request, even though it lives here now:
-  // `run()` awaits `ready()`, which builds one sample server (it needs the per-tool
-  // security schemes to wire OAuth) before the port is bound. So a duplicate tool name or
-  // a schema the SDK refuses to convert aborts module evaluation exactly as it did when
-  // this ran at module scope, instead of leaving a revision that answers /status with 200
-  // and every /mcp call with a 500. That ordering is undocumented, so a test pins it:
-  // tests/server-boot-registration.test.ts.
-  handler: (server) => {
-    registerTools(server, client, config, uploadTickets, finalizeConfirmation);
-    return server;
+/**
+ * Build the MCP server for one request, with every enabled tool registered.
+ *
+ * Per request, and synchronous, so it does registration and nothing else. A fresh server
+ * per request is what `createMcpHandler`'s factory contract asks for: the SDK stamps the
+ * negotiated protocol version on the instance, so sharing one would pin concurrent callers
+ * to a single version.
+ *
+ * It costs ~23ms of blocking CPU per request (53 tools at the read+drafts tier), which
+ * is most of the server's own time. That tier has 39 tools since the per-type get-<type>
+ * and render-<type>-pdf tools were folded into get-document and get-document-file, so
+ * read the figures below as an upper bound. Measured over HTTP against the built image:
+ *
+ *   /status        2.1ms      <- no registration
+ *   initialize    29.5ms      <- pays for all 53 tool schemas and uses none of them
+ *   tools/list    41.3ms
+ *
+ * Where it goes, measured by running the real registerTools twice against a server whose
+ * registerTool drops `inputSchema` in one pass and keeps it in the other:
+ *
+ *   registration, as it runs today            22.9ms
+ *   the same, minus the SDK's zod -> JSON     4.7ms   <- all the rest is ours
+ *   Schema conversion
+ *
+ * So ~79% is `_createRegisteredTool` calling `standardSchemaToJsonSchema` on every
+ * registration, and zod does NOT memoize `~standard.jsonSchema.input()`: converting ONE
+ * hoisted instance 300 times costs a median 0.84ms every time and returns a fresh object
+ * on each call; a per-registration `z.object(shape)` costs 1.03ms. Hoisting buys 18%, not
+ * the ~100% a memo would. The remaining 4.7ms is ours and is hoistable, at the price of
+ * lifting every `inputSchema` literal in src/tools/ to module scope. Not taken: a fifth
+ * of a cost whose other four fifths are upstream.
+ */
+function createServer(): McpServer {
+  const server = new McpServer(
+    {
+      name: "lexware-office",
+      title: "Lexware Office",
+      description: "Contacts, sales documents, vouchers and files in Lexware Office.",
+      websiteUrl: "https://github.com/marselsel/Lexware-MCP-Server",
+      version: "0.2.0",
+    },
+    {
+      capabilities: {},
+      // Sent when a client connects: how the tools fit together, scoped to the enabled tiers.
+      instructions: buildServerInstructions(config.capabilities),
+      // Verifies the signed requestState a client echoes back with its confirmation, before
+      // the handler runs. Without the hook the SDK would hand the handler the raw, unverified
+      // string.
+      ...(finalizeConfirmation ? { requestState: { verify: finalizeConfirmation.verify } } : {}),
+    },
+  );
+  registerTools(server, client, config, uploadTickets, finalizeConfirmation);
+  return server;
+}
+
+// Registration fails at BOOT, not per request, even though createServer runs per request:
+// building one sample server here, before the port is bound, means a duplicate tool name
+// or a schema the SDK refuses to convert aborts module evaluation, instead of leaving a
+// revision that answers /status with 200 and every /mcp call with a 500. A test pins it:
+// tests/server-boot-registration.test.ts.
+createServer();
+
+const mcpHandler = createMcpHandler(createServer, {
+  onerror: (error) => {
+    // A client asking for a protocol version this SDK does not speak is answered with the
+    // right error already; logging it too would only be noise.
+    if (error instanceof UnsupportedProtocolVersionError) return;
+    console.error("[lexware-mcp] Error handling MCP request:", error);
   },
 });
+const nodeMcpHandler = toNodeHandler(mcpHandler);
 
-// Everything below is registered BEFORE app.run(). Skybridge appends its own /assets,
-// /mcp and error middleware inside run(), so anything added afterwards would land behind
-// the default error handler.
+const app = createBaseApp(config.host);
 
 // Unauthenticated health check. Use `/status`, not `/healthz`: Google Front End
 // intercepts `/healthz` on Cloud Run (it never reaches the container).
-app.express.get("/status", (_req: Request, res: Response) => {
+app.get("/status", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
@@ -159,9 +151,20 @@ if (config.auth.mode === "oauth") {
 
 // Parse /mcp bodies at the raised limit — mounted AFTER the auth gate above, so an
 // unauthenticated request is rejected before any multi-MB body is buffered or parsed.
-// Not optional: Skybridge's /mcp handler is called with `req.body`, so with the app-level
-// parser inert this mount is what produces it.
+// The MCP handler below receives `req.body` as the pre-parsed body; the base app has no
+// parser of its own (see http-app.ts).
 app.use("/mcp", express.json({ limit: JSON_BODY_LIMIT }));
+
+app.use("/mcp", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Express strips the mount path from req.url ("/mcp" becomes "/"). Restore it so the
+    // SDK builds the correct request URL.
+    req.url = req.originalUrl;
+    await nodeMcpHandler(req, res, req.body);
+  } catch (error) {
+    next(error);
+  }
+});
 
 // The ticket-gated upload routes are a drafts-tier WRITE path (they push a file into the
 // Lexware file store), so mount them only when the drafts capability is enabled. Without
@@ -170,10 +173,10 @@ app.use("/mcp", express.json({ limit: JSON_BODY_LIMIT }));
 // unreachable, since no ticket can be issued without the drafts-only create-upload-ticket
 // tool, but a write route has no business existing on a server configured not to write.
 //
-// They read the body themselves with express.raw(); with the app-level parser inert,
-// that raw parser is the first thing to touch an upload body.
+// They read the body themselves with express.raw(); with no app-level parser, that raw
+// parser is the first thing to touch an upload body.
 if (config.capabilities.drafts) {
-  registerUploadRoutes(app.express, uploadTickets, async ({ bytes, filename, contentType, type }) =>
+  registerUploadRoutes(app, uploadTickets, async ({ bytes, filename, contentType, type }) =>
     client.postMultipart<{ id: string }>("/v1/files", { bytes, filename, contentType }, { type }),
   );
 }
@@ -198,13 +201,31 @@ if (config.auth.mode === "none") {
   );
 }
 
-export default await app.run();
+// Last in the stack: a JSON-RPC error body for anything that escaped the /mcp handler,
+// instead of Express's default HTML page.
+app.use("/mcp", (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("[lexware-mcp] Error handling MCP request:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null });
+  }
+});
 
-// No `AppType` export. Skybridge's contract is that the handler returns the CHAINED
-// server, so `typeof app` carries the registered tool types for `createClient<AppType>()`
-// and for views. This server cannot honour it: `registerTools` returns void, and even
-// threading the chain through would not help, because the tools are registered in loops
-// over runtime arrays behind capability-tier `if`s — the set is not statically known, by
-// design. So `typeof app` would infer `Record<never, ToolDef>` and quietly hand any
-// future consumer an empty tool surface. Better to have no type than a type that lies;
-// there are no views and no generated client here to want one.
+const httpServer = app.listen(config.port, config.host, () => {
+  console.error(`[lexware-mcp] listening on ${config.host}:${config.port}`);
+});
+httpServer.on("error", (error) => {
+  console.error("[lexware-mcp] Failed to start server:", error);
+  process.exit(1);
+});
+
+// Drain on SIGTERM (Cloud Run, docker stop) and Ctrl+C. A second signal falls through to
+// Node's default and quits at once; a drain that hangs is cut off after 3s.
+const shutdown = () => {
+  process.off("SIGTERM", shutdown);
+  process.off("SIGINT", shutdown);
+  mcpHandler.close().catch(() => {});
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

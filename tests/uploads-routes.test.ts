@@ -8,30 +8,23 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { LexwareApiError } from "../src/lexware/errors.js";
 import { buildTicketResponse } from "../src/tools/uploads.js";
-import { INERT_APP_JSON } from "../src/server-body-parsing.js";
+import { createBaseApp } from "../src/http-app.js";
 import { TicketStore } from "../src/uploads/tickets.js";
 import { FILENAME_B64_SOURCE, uploadPageHtml } from "../src/uploads/page.js";
 import { decodeFilenameB64, headerString, registerUploadRoutes } from "../src/uploads/routes.js";
 
 /**
- * Builds an app shaped like the real production stack: a global `express.json()`
- * pre-applied at router-stack index 0 (mirroring Skybridge's own constructor), carrying
- * the SAME `INERT_APP_JSON` options `server.ts` passes it. A naked `express()` — what
- * this file used before — cannot reproduce Critical-1 (a JSON-content-typed upload
- * silently becoming an empty file): with no global JSON parser in the stack to begin
- * with, `express.raw()` always saw the real bytes, so the bug was invisible here even
- * though it fired in production.
+ * Builds an app on the SAME base production uses (`createBaseApp` from http-app.ts). A
+ * naked `express()` once hid Critical-1 (a JSON-content-typed upload silently becoming an
+ * empty file): production then carried a global JSON parser that this file's app did not,
+ * so `express.raw()` here always saw the real bytes while production did not.
  *
- * The coupling is the point, and it survived the skybridge 2.0 migration by changing
- * shape: production used to neutralize that layer by swapping its handler in place, and
- * now neutralizes it through Skybridge's `json` config field. Either way this app is
- * built from the same value production uses, so the two cannot drift. If a future
- * skybridge re-enables the parser despite those options, `makeApp` starts parsing here
- * too and these tests fail — which is exactly what should happen.
+ * The coupling is the point. Production and these tests build from one function, so the
+ * two cannot drift: if a body parser ever lands in the base app again, `makeApp` starts
+ * parsing here too and these tests fail, which is exactly what should happen.
  */
 function makeApp(store: TicketStore, uploaded: unknown[] = [], maxBytes?: number) {
-  const app = express();
-  app.use(express.json(INERT_APP_JSON));
+  const app = createBaseApp("127.0.0.1");
   registerUploadRoutes(
     app,
     store,
@@ -151,8 +144,7 @@ describe("upload routes", () => {
     let attempt = 0;
     // makeApp's own upload fn always succeeds, so this needs its own app wired to a
     // failing-then-succeeding upload fn.
-    const app = express();
-    app.use(express.json(INERT_APP_JSON)); // same options production passes Skybridge
+    const app = createBaseApp("127.0.0.1"); // the base production builds on
     registerUploadRoutes(app, store, async () => {
       attempt += 1;
       if (attempt === 1) throw new Error("lexware exploded");
@@ -396,8 +388,7 @@ describe("upload routes", () => {
     const uploadPromise = new Promise<{ id: string }>((resolve) => {
       resolveUpload = resolve;
     });
-    const app = express();
-    app.use(express.json(INERT_APP_JSON)); // same options production passes Skybridge
+    const app = createBaseApp("127.0.0.1"); // the base production builds on
     registerUploadRoutes(app, store, async () => uploadPromise);
     const s = await listen(app);
 
@@ -544,8 +535,7 @@ describe("upload routes", () => {
   it("enforces the default 20 MB limit when maxBytes is not passed explicitly", async () => {
     const store = new TicketStore();
     const t = store.create({ type: "voucher" });
-    const app = express();
-    app.use(express.json(INERT_APP_JSON)); // same options production passes Skybridge
+    const app = createBaseApp("127.0.0.1"); // the base production builds on
     registerUploadRoutes(app, store, async () => ({ id: "x" })); // no maxBytes -> default applies
     const s = await listen(app);
     const res = await fetch(`${s.url}/upload/${t.ticket}`, {
@@ -676,7 +666,7 @@ describe("upload routes", () => {
   it("treats an uppercase /UPLOAD path the same as /upload for the body-parsing swap", async () => {
     // Express itself routes /UPLOAD/:ticket to the same handler as /upload/:ticket
     // (case-insensitive routing is Express's default) — but isUploadPath used to
-    // compare case-sensitively, so the swap in server-body-parsing.ts silently did
+    // compare case-sensitively, so the old body-parsing swap silently did
     // NOT skip the global JSON parser for the uppercase spelling, reopening a
     // bounded slice of Critical 2 on that path. This exercises the full stack
     // exactly like the lowercase Critical-1 test: a JSON-content-typed body must
@@ -733,12 +723,11 @@ describe("upload routes", () => {
 
 /**
  * Builds an app whose upload fn always throws `err`, so the route's error mapping
- * can be exercised on its own. Mirrors makeApp's production-like body-parsing
- * stack (global express.json() + deferral) so nothing else differs.
+ * can be exercised on its own. Built on the same production base as makeApp, so
+ * nothing else differs.
  */
 function makeFailingApp(store: TicketStore, err: unknown) {
-  const app = express();
-  app.use(express.json(INERT_APP_JSON)); // same options production passes Skybridge
+  const app = createBaseApp("127.0.0.1"); // the base production builds on
   registerUploadRoutes(app, store, async () => {
     throw err;
   });

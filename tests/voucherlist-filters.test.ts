@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { LexwareClient } from "../src/lexware/client.js";
@@ -23,8 +23,8 @@ function setup() {
   const client = { get } as unknown as LexwareClient;
   const handlers: Record<string, Handler> = {};
   const server = {
-    registerTool(cfg: { name: string }, handler: Handler) {
-      handlers[cfg.name] = handler;
+    registerTool(name: string, _cfg: unknown, handler: Handler) {
+      handlers[name] = handler;
       return server;
     },
   } as unknown as McpServer;
@@ -168,8 +168,8 @@ describe("summarize-vouchers filters", () => {
 function schemasOf(): Record<string, z.ZodRawShape> {
   const schemas: Record<string, z.ZodRawShape> = {};
   const server = {
-    registerTool(cfg: { name: string; inputSchema?: z.ZodRawShape }) {
-      if (cfg.inputSchema) schemas[cfg.name] = cfg.inputSchema;
+    registerTool(name: string, cfg: { inputSchema?: z.ZodObject<z.ZodRawShape> }) {
+      if (cfg.inputSchema) schemas[name] = cfg.inputSchema.shape;
       return server;
     },
   } as unknown as McpServer;

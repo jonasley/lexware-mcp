@@ -338,21 +338,15 @@ describe("loadConfig", () => {
     );
   });
 
-  it("prefers __PORT for the loopback fallback — that is the port the listener actually binds", () => {
-    // Under `skybridge dev` the listener binds __PORT (skybridge picks it itself,
-    // ~3000) and plain PORT is never consulted — links built from PORT refused
-    // connections on the very machine the fallback exists for. `npm start` is
-    // unaffected: server.ts copies config.port into __PORT only AFTER loadConfig.
-    expect(loadConfig({ ...base(), __PORT: "3000" } as NodeJS.ProcessEnv).publicBaseUrl).toBe("http://127.0.0.1:3000");
-    // Both set: __PORT is what is actually bound.
-    expect(
-      loadConfig({ ...base(), PORT: "9443", __PORT: "3000" } as NodeJS.ProcessEnv).publicBaseUrl,
-    ).toBe("http://127.0.0.1:3000");
-    // Garbage __PORT is ignored rather than pasted into links.
-    expect(loadConfig({ ...base(), __PORT: "nope" } as NodeJS.ProcessEnv).publicBaseUrl).toBe("http://127.0.0.1:8080");
+  it("names the bound loopback interface in the fallback, and 127.0.0.1 for a wildcard bind", () => {
+    expect(loadConfig({ ...base(), HOST: "::1" } as NodeJS.ProcessEnv).publicBaseUrl).toBe("http://[::1]:8080");
+    expect(loadConfig({ ...base(), HOST: "localhost" } as NodeJS.ProcessEnv).publicBaseUrl).toBe(
+      "http://localhost:8080",
+    );
+    expect(loadConfig({ ...base(), HOST: "0.0.0.0" } as NodeJS.ProcessEnv).publicBaseUrl).toBe("http://127.0.0.1:8080");
     // An explicit public URL always wins over any loopback fallback.
     expect(
-      loadConfig({ ...base(), __PORT: "3000", SERVER_URL: "https://mcp.example.com" } as NodeJS.ProcessEnv)
+      loadConfig({ ...base(), HOST: "0.0.0.0", SERVER_URL: "https://mcp.example.com" } as NodeJS.ProcessEnv)
         .publicBaseUrl,
     ).toBe("https://mcp.example.com");
   });
@@ -479,5 +473,34 @@ describe("loadConfig", () => {
     expect(s).toContain("token-protected");
     expect(s).not.toContain(TOKEN);
     expect(s).not.toContain("key");
+  });
+});
+
+describe("HOST", () => {
+  it("defaults to loopback, with no warning", () => {
+    const c = loadConfig(base());
+    expect(c.host).toBe("127.0.0.1");
+    expect(c.warnings.filter((w) => w.startsWith("HOST="))).toEqual([]);
+  });
+
+  it("accepts IP literals and localhost", () => {
+    expect(loadConfig({ ...base(), HOST: " 0.0.0.0 " } as NodeJS.ProcessEnv).host).toBe("0.0.0.0");
+    expect(loadConfig({ ...base(), HOST: "::" } as NodeJS.ProcessEnv).host).toBe("::");
+    expect(loadConfig({ ...base(), HOST: "LOCALHOST" } as NodeJS.ProcessEnv).host).toBe("localhost");
+  });
+
+  it("rejects anything else at startup", () => {
+    for (const bad of ["example.com", "999.1.1.1", "127.0.0.1:8080", "http://127.0.0.1"]) {
+      expect(() => loadConfig({ ...base(), HOST: bad } as NodeJS.ProcessEnv), bad).toThrow(ConfigError);
+    }
+  });
+
+  it("warns when the bind is not loopback", () => {
+    const c = loadConfig({ ...base(), HOST: "0.0.0.0" } as NodeJS.ProcessEnv);
+    expect(c.warnings.some((w) => w.startsWith("HOST=0.0.0.0 binds a non-loopback interface"))).toBe(true);
+    for (const loopback of ["127.0.0.2", "::1", "localhost"]) {
+      const l = loadConfig({ ...base(), HOST: loopback } as NodeJS.ProcessEnv);
+      expect(l.warnings.filter((w) => w.startsWith("HOST=")), loopback).toEqual([]);
+    }
   });
 });

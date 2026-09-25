@@ -1,4 +1,4 @@
-import type { McpServer } from "skybridge/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
@@ -204,8 +204,8 @@ describe("upload tool annotations", () => {
   it("marks get-upload-result as a local read; create-upload-ticket stays a write", () => {
     const defs: { name: string; annotations: Record<string, boolean> }[] = [];
     const fake = {
-      registerTool(def: { name: string; annotations: Record<string, boolean> }) {
-        defs.push(def);
+      registerTool(name: string, def: { annotations: Record<string, boolean> }) {
+        defs.push({ name, ...def });
         return fake;
       },
     } as unknown as McpServer;

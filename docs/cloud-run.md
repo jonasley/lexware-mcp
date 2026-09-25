@@ -42,7 +42,7 @@ gcloud run deploy lexware-mcp \
   --allow-unauthenticated \
   --max-instances=1 \
   --set-secrets LEXWARE_API_KEY=lexware-api-key:latest \
-  --set-env-vars OAUTH_ISSUER=https://YOUR-TENANT.example,OAUTH_RESOURCE=https://YOUR-PUBLIC-URL/mcp,OAUTH_ALLOWED_EMAIL_DOMAINS=example.com
+  --set-env-vars HOST=0.0.0.0,OAUTH_ISSUER=https://YOUR-TENANT.example,OAUTH_RESOURCE=https://YOUR-PUBLIC-URL/mcp,OAUTH_ALLOWED_EMAIL_DOMAINS=example.com
 ```
 
 `OAUTH_RESOURCE` is the MCP endpoint including `/mcp` — the URL users enter in Claude — and
@@ -55,6 +55,7 @@ it instead of the OAuth env vars:
 ```bash
 openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add mcp-auth-token --data-file=- # after `gcloud secrets create mcp-auth-token ...`
 gcloud run deploy lexware-mcp --source . --region europe-west1 --allow-unauthenticated --max-instances=1 \
+  --set-env-vars HOST=0.0.0.0 \
   --set-secrets LEXWARE_API_KEY=lexware-api-key:latest,MCP_AUTH_TOKEN=mcp-auth-token:latest
 ```
 
@@ -67,6 +68,9 @@ gcloud run deploy lexware-mcp --source . --region europe-west1 --allow-unauthent
 - Health check path is **`/status`**, not `/healthz` — Google Front End intercepts `/healthz`
   before it reaches the container.
 - Cloud Run injects `PORT`; the server honors it.
+- `HOST=0.0.0.0` is required: the server binds `127.0.0.1` by default, which Cloud Run cannot
+  reach. The Dockerfile already sets it; the flag above keeps it explicit. The startup log
+  then warns about a non-loopback bind, which is expected here.
 
 ## 3. (Optional) Custom domain
 

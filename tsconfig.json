@@ -1,5 +1,34 @@
 {
-  "extends": "skybridge/tsconfig",
+  "compilerOptions": {
+    // Module resolution options
+    "module": "NodeNext",
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": true,
 
-  "include": ["src", ".skybridge/**/*.d.ts"]
+    // Output options
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    "incremental": true,
+    "sourceMap": true,
+
+    // Language and environment options
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    // Type declarations
+    "types": ["node"],
+
+    // Strictness and checking options
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Code quality & diagnostics
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+
+  "include": ["src"]
 }
