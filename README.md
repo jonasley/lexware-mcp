@@ -1,6 +1,5 @@
 # Lexware Office MCP Server
 
-[![CI](https://github.com/marselsel/Lexware-MCP-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/marselsel/Lexware-MCP-Server/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/marselsel/Lexware-MCP-Server)](https://github.com/marselsel/Lexware-MCP-Server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
