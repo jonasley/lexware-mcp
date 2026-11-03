@@ -8,4 +8,4 @@ Key conventions:
   `src/tools/index.ts` (read = always; drafts/finalize = env-gated).
 - Finalizing is irreversible: any legally-binding write must be a separate, confirmation-gated
   finalize-tier tool — never a flag on a draft tool.
-- `npm run build` typechecks; `npm test` runs vitest. Never log secrets or PII.
+- `pnpm build` typechecks; `pnpm test` runs vitest. Never log secrets or PII.

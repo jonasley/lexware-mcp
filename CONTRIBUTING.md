@@ -5,9 +5,9 @@ Thanks for your interest in improving the Lexware Office MCP server!
 ## Development setup
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env   # fill in LEXWARE_API_KEY and MCP_AUTH_TOKEN
-npm run dev            # server with reload on change, at http://127.0.0.1:8080/mcp
+pnpm dev        # server with reload on change, at http://127.0.0.1:8080/mcp
 ```
 
 > There is no Lexware sandbox host — test against a free [trial account](https://www.lexware.de/).
@@ -15,11 +15,11 @@ npm run dev            # server with reload on change, at http://127.0.0.1:8080/
 ## Before opening a PR
 
 ```bash
-npm run build   # typecheck (tsc)
-npm test        # vitest
+pnpm build   # typecheck (tsc)
+pnpm test    # vitest
 ```
 
-CI runs the same checks plus `docker build` and `npm audit`.
+CI runs the same checks plus `docker build` and `pnpm audit`.
 
 ## Guidelines
 

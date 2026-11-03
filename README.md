@@ -174,10 +174,14 @@ openssl rand -hex 32
 Without Docker:
 
 ```bash
-npm install
-npm run build
-LEXWARE_API_KEY=... MCP_AUTH_TOKEN=... npm start
+pnpm install
+pnpm build
+LEXWARE_API_KEY=... MCP_AUTH_TOKEN=... pnpm start
 ```
+
+The repo uses pnpm 12 and refuses npm (`devEngines` in `package.json`). `pnpm-workspace.yaml` holds the
+supply chain policy: new package versions wait seven days before they can be installed, dependency
+build scripts stay off unless allowed, and installs fail on a trust downgrade.
 
 ## Configuration
 
@@ -265,7 +269,7 @@ domain) is in [docs/cloud-run.md](docs/cloud-run.md).
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). `npm run dev` starts the server with reload on
+See [CONTRIBUTING.md](CONTRIBUTING.md). `pnpm dev` starts the server with reload on
 change at `http://127.0.0.1:8080/mcp`.
 
 ## License

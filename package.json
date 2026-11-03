@@ -5,6 +5,13 @@
   "license": "MIT",
   "description": "Open-source, self-hostable MCP server for the Lexware Office API",
   "type": "module",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.16.1 <13",
+      "onFail": "error"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -b --force",

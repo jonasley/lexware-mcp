@@ -1,0 +1,6 @@
+minimumReleaseAge: 10080
+minimumReleaseAgeIgnoreMissingTime: false
+trustPolicy: no-downgrade
+allowBuilds:
+  # Binary ships via optionalDependencies; the install script is not needed.
+  esbuild: false
