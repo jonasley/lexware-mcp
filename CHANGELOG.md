@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Security
+- Bumped `hono` to 4.13.17 and `@hono/node-server` to 2.1.6. The old `@hono/node-server` parsed a
+  backslash in the request path as a separator, so a path rule at a reverse proxy could be bypassed
+  (GHSA-jpvv-r467-5p4w, GHSA-qv5m-9pm6-hqp3). `hono` 4.13.14 had five medium advisories, among them a
+  `csrf()` gap for hyperlink-auditing requests (GHSA-46wx-v44x-9hh2).
 - Removed the Skybridge framework; the server now runs directly on the official MCP SDK
   (`@modelcontextprotocol/server`, `/express`, `/node`). Skybridge sent a UDP telemetry packet per
   tool call to a hard-coded address and bound the HTTP server on every interface.
